@@ -16,18 +16,17 @@ let _ancestors: Promise<Ancestor[]> | null = null;
 // 	return result.toArray().map((row) => row.toJSON());
 // }
 
-async function queryAllAncestors(): Promise<Ancestor[]> {
-	const { conn } = await getDB();
-	const result = await conn.query(`
-		SELECT
-			ancestor_id,
-			ancestor_full_name,
-			ancestor_location_name,
-			ancestor_geolocation,
-			ancestor_date_ref
-		FROM fct_family_branch
-		WHERE ancestor_geolocation IS NOT NULL
-	`);
+// TODO: Switch to public interface contract to derive the TS interface & queries
+const ANCESTOR_COLUMNS = `
+	ancestor_id,
+	ancestor_full_name,
+	ancestor_location_name,
+	ancestor_geolocation,
+	ancestor_date_ref
+`;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toAncestors(result: { toArray(): any[] }): Ancestor[] {
 	return result.toArray().map((row) => ({
 		ancestor_id: row.ancestor_id,
 		ancestor_full_name: row.ancestor_full_name,
@@ -37,10 +36,36 @@ async function queryAllAncestors(): Promise<Ancestor[]> {
 	}));
 }
 
+async function queryAllAncestors(): Promise<Ancestor[]> {
+	const { conn } = await getDB();
+	const result = await conn.query(`
+		SELECT ${ANCESTOR_COLUMNS}
+		FROM fct_family_branch
+		WHERE ancestor_geolocation IS NOT NULL
+	`);
+	return toAncestors(result);
+}
+
+// Exposed wrapper function caching query results
 export function getAllAncestors(): Promise<Ancestor[]> {
 	_ancestors ??= queryAllAncestors().catch((error) => {
 		_ancestors = null;
 		throw error;
 	});
 	return _ancestors;
+}
+
+// User-supplied values only ever go through prepared statements, never string interpolation
+export async function getAncestorsByLastNameId(lastNameId: string): Promise<Ancestor[]> {
+	const { conn } = await getDB();
+	const stmt = await conn.prepare(`
+		SELECT ${ANCESTOR_COLUMNS}
+		FROM fct_family_branch
+		WHERE ancestor_geolocation IS NOT NULL AND last_name_id = ?::UUID
+	`);
+	try {
+		return toAncestors(await stmt.query(lastNameId));
+	} finally {
+		await stmt.close();
+	}
 }

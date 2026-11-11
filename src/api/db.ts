@@ -11,6 +11,10 @@ const BUNDLES: duckdb.DuckDBBundles = {
 	eh: { mainModule: duckdbWasmEh, mainWorker: duckdbWorkerEh }
 };
 
+// Public, whitelisted export of the prebuilt database file
+const DB_FILE = 'ancestry.db';
+const DB_URL = '/data/ancestry.db';
+
 let _ready: Promise<DB> | null = null;
 
 async function init(): Promise<DB> {
@@ -24,11 +28,20 @@ async function init(): Promise<DB> {
 		await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
 
 		// Registered by URL so DuckDB reads pages via HTTP range requests instead of loading the whole file
-		const url = new URL('/sample.db', location.origin).href;
-		await db.registerFileURL('sample.db', url, duckdb.DuckDBDataProtocol.HTTP, false);
-		await db.open({ path: 'sample.db', accessMode: duckdb.DuckDBAccessMode.READ_ONLY });
+		const url = new URL(DB_URL, location.origin).href;
+		await db.registerFileURL(DB_FILE, url, duckdb.DuckDBDataProtocol.HTTP, false);
+		await db.open({ path: DB_FILE, accessMode: duckdb.DuckDBAccessMode.READ_ONLY });
 
 		const conn = await db.connect();
+
+		// Stop queries from reaching other URLs or installing extensions, and lock the settings so
+		// they can't be turned back on from the devtools console
+		await conn.query(`
+			SET enable_external_access = false;
+			SET autoinstall_known_extensions = false;
+			SET autoload_known_extensions = false;
+			SET lock_configuration = true;
+		`);
 		return { db, conn };
 	} catch (error) {
 		await db.terminate();
