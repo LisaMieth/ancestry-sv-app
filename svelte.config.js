@@ -1,4 +1,4 @@
-import adapter from '@sveltejs/adapter-auto';
+import adapter from '@sveltejs/adapter-static';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -7,11 +7,25 @@ const config = {
 		runes: ({ filename }) => (filename.split(/[/\\]/).includes('node_modules') ? undefined : true)
 	},
 	kit: {
-		// adapter-auto only supports some environments, see https://svelte.dev/docs/kit/adapter-auto for a list.
-		// If your environment is not supported, or you settled on a specific environment, switch out the adapter.
-		// See https://svelte.dev/docs/kit/adapters for more information about adapters.
-		adapter: adapter()
-	},
+		// Client-only SPA (ssr = false), built as static files and run locally
+		adapter: adapter({ fallback: 'index.html' }),
+		csp: {
+			mode: 'auto',
+			directives: {
+				'default-src': ['self'],
+				// DuckDB compiles its .wasm module at runtime
+				'script-src': ['self', 'wasm-unsafe-eval'],
+				'worker-src': ['self'],
+				'connect-src': ['self'],
+				'img-src': ['self', 'data:', 'https://tile.openstreetmap.org'],
+				// Vite injects <style> tags in dev; Leaflet sets inline styles
+				'style-src': ['self', 'unsafe-inline'],
+				'object-src': ['none'],
+				'base-uri': ['self'],
+				'form-action': ['self']
+			}
+		}
+	}
 };
 
 export default config;
